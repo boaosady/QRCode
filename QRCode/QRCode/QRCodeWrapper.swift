@@ -219,16 +219,17 @@ open class QRCodeWrapper: NSObject,AVCaptureMetadataOutputObjectsDelegate, AVCap
     }
 
     public func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+        
         let metadataDict: CFDictionary = CMCopyDictionaryOfAttachments(nil, sampleBuffer, kCMAttachmentMode_ShouldPropagate)!
         let metadata = metadataDict as? [AnyHashable: Any]
         var brightnessValue: Float = 0
 
         if let exifMetadata = (metadata![(kCGImagePropertyExifDictionary as String)]) as? [AnyHashable: Any] {
-            if let brightness = exifMetadata["BrightnessValue"] as? Float {
-                brightnessValue = brightness
+            if let brightness = exifMetadata["BrightnessValue"] as? NSNumber {
+                brightnessValue = brightness.floatValue
             }
         }
-        print("\(brightnessValue)")
+        
         brightnessBlock(brightnessValue)
     }
 }
