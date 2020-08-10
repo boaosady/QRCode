@@ -25,7 +25,7 @@ public struct QRCodeResult {
     }
 }
 
-open class QRCodeWrapper: NSObject,AVCaptureMetadataOutputObjectsDelegate, AVCaptureVideoDataOutputSampleBufferDelegate {
+open class QRCodeWrapper: NSObject,AVCaptureMetadataOutputObjectsDelegate, AVCaptureVideoDataOutputSampleBufferDelegate, AVCapturePhotoCaptureDelegate {
     
     let device = AVCaptureDevice.default(for: AVMediaType.video)
     var input:AVCaptureDeviceInput?
@@ -33,7 +33,7 @@ open class QRCodeWrapper: NSObject,AVCaptureMetadataOutputObjectsDelegate, AVCap
     
     let session = AVCaptureSession()
     var previewLayer:AVCaptureVideoPreviewLayer?
-    var stillImageOutput:AVCaptureStillImageOutput?
+    var stillImageOutput:AVCapturePhotoOutput?
     var arrayResult:[QRCodeResult] = []
     var successBlock:([QRCodeResult]) -> Void
     var brightnessBlock:(Float) -> Void
@@ -52,7 +52,7 @@ open class QRCodeWrapper: NSObject,AVCaptureMetadataOutputObjectsDelegate, AVCap
         output = AVCaptureMetadataOutput()
 
         isNeedCaptureImage = isCaptureImg
-        stillImageOutput = AVCaptureStillImageOutput()
+        stillImageOutput = AVCapturePhotoOutput()
         super.init()
 
         let videoOutput = AVCaptureVideoDataOutput()
@@ -71,8 +71,10 @@ open class QRCodeWrapper: NSObject,AVCaptureMetadataOutputObjectsDelegate, AVCap
             session.addOutput(stillImageOutput!)
         }
         
-        let outputSettings:Dictionary = [AVVideoCodecJPEG:AVVideoCodecKey]
-        stillImageOutput?.outputSettings = outputSettings
+//        let outputSettings:Dictionary = [AVVideoCodecType.jpeg:AVVideoCodecKey]
+        let outputSettings:Dictionary = [AVVideoCodecKey:AVVideoCodecType.jpeg]
+        let setting = AVCapturePhotoSettings(format: outputSettings)
+        stillImageOutput?.photoSettingsForSceneMonitoring = setting
         session.sessionPreset = AVCaptureSession.Preset.high
         output.setMetadataObjectsDelegate(self, queue: DispatchQueue.main)
         output.metadataObjectTypes = objType
@@ -140,26 +142,30 @@ open class QRCodeWrapper: NSObject,AVCaptureMetadataOutputObjectsDelegate, AVCap
             }  else {
                 stop()
                 successBlock(arrayResult)
-            } 
+            }
         } else {
             isNeedScanResult = true
         }
     }
     
     open func captureImage() {
-        let stillImageConnection:AVCaptureConnection? = connectionWithMediaType(mediaType: AVMediaType.video, connections: (stillImageOutput?.connections)! as [AnyObject])
-        stillImageOutput?.captureStillImageAsynchronously(from: stillImageConnection!, completionHandler: { (imageDataSampleBuffer, error) -> Void in
-            self.stop()
-            if imageDataSampleBuffer != nil {
-                let imageData: Data = AVCaptureStillImageOutput.jpegStillImageNSDataRepresentation(imageDataSampleBuffer!)!
-                let scanImg:UIImage? = UIImage(data: imageData)
-                for idx in 0...self.arrayResult.count-1 {
-                    self.arrayResult[idx].imgScanned = scanImg
-                }
-            }
-            self.successBlock(self.arrayResult)
-        })
+        if let sp = stillImageOutput {
+            sp.capturePhoto(with: (sp.photoSettingsForSceneMonitoring)!, delegate: self)
+        }
     }
+    
+    public func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
+        print("processingPhoto")
+        self.stop()
+        if let d = photo.fileDataRepresentation() {
+            let scanImg:UIImage? = UIImage(data: d)
+            for idx in 0...self.arrayResult.count-1 {
+                self.arrayResult[idx].imgScanned = scanImg
+            }
+        }
+        self.successBlock(self.arrayResult)
+    }
+    
     
     open func connectionWithMediaType(mediaType:AVMediaType,connections:[AnyObject]) -> AVCaptureConnection? {
         for connection:AnyObject in connections {
@@ -200,7 +206,7 @@ open class QRCodeWrapper: NSObject,AVCaptureMetadataOutputObjectsDelegate, AVCap
         }
     }
     
-    static open func recognizeQRImage(image:UIImage) ->[QRCodeResult] {
+    static public func recognizeQRImage(image:UIImage) ->[QRCodeResult] {
         var returnResult:[QRCodeResult]=[]
         let detector:CIDetector = CIDetector(ofType: CIDetectorTypeQRCode, context: nil, options: [CIDetectorAccuracy:CIDetectorAccuracyHigh])!
         let img = CIImage(cgImage: (image.cgImage)!)
@@ -220,7 +226,7 @@ open class QRCodeWrapper: NSObject,AVCaptureMetadataOutputObjectsDelegate, AVCap
 
     public func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         
-        let metadataDict: CFDictionary = CMCopyDictionaryOfAttachments(nil, sampleBuffer, kCMAttachmentMode_ShouldPropagate)!
+        let metadataDict: CFDictionary = CMCopyDictionaryOfAttachments(allocator: nil, target: sampleBuffer, attachmentMode: kCMAttachmentMode_ShouldPropagate)!
         let metadata = metadataDict as? [AnyHashable: Any]
         var brightnessValue: Float = 0
 
